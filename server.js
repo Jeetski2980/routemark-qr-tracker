@@ -83,7 +83,9 @@ async function hydrateVisits(currentStore) {
   await Promise.all(currentStore.campaigns.map(async (campaign) => {
     const fields = await redisRequest(['HGETALL', `routemark:visits:${campaign.id}`]);
     if (!fields) return;
-    const values = Object.fromEntries(Array.from({ length: fields.length / 2 }, (_, index) => [fields[index * 2], fields[index * 2 + 1]]));
+    const values = Array.isArray(fields)
+      ? Object.fromEntries(Array.from({ length: fields.length / 2 }, (_, index) => [fields[index * 2], fields[index * 2 + 1]]))
+      : fields;
     campaign.totalVisits = Number(values.total || 0);
     campaign.lastVisitedAt = values.last || null;
     campaign.visitsByDay = Object.fromEntries(Object.entries(values).filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key)).map(([key, value]) => [key, Number(value)]));
@@ -302,6 +304,7 @@ async function handleApi(request, response, url) {
     if (index === -1) return sendJson(response, 404, { error: 'Campaign not found.' });
     currentStore.campaigns.splice(index, 1);
     await persistStore(currentStore);
+    if (redisEnabled) await redisRequest(['DEL', `routemark:visits:${campaignMatch[1]}`]);
     return sendJson(response, 200, { ok: true });
   }
 
